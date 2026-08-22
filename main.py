@@ -1,4 +1,5 @@
 import math
+import datetime
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -96,6 +97,48 @@ def change_password(
     current_user.hashed_password = auth.hash_password(payload.new_password)
     db.commit()
     return schemas.MessageResponse(message="เปลี่ยนรหัสผ่านสำเร็จ")
+
+
+@app.post("/forgot-password", response_model=schemas.ForgotPasswordResponse, tags=["Authentication"])
+def forgot_password(payload: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    ขอ reset password ด้วย username
+
+    หมายเหตุสำคัญ: โปรเจกต์นี้ยังไม่มีระบบส่งอีเมลจริง (ต้องใช้บริการอย่าง SendGrid/SMTP
+    ซึ่งนอกเหนือขอบเขตวิชานี้) จึงส่ง reset_token กลับมาใน response ตรง ๆ เพื่อให้ทดสอบ
+    flow ได้ครบ ในระบบจริงห้ามทำแบบนี้เด็ดขาด — ต้องส่ง token ไปทางอีเมลของเจ้าของบัญชีเท่านั้น
+    ไม่ใช่ตอบกลับใน API response ตรง ๆ เพราะใครก็เดา/ยิง username เข้ามาแล้วได้ token ไปเปลี่ยน
+    รหัสผ่านคนอื่นได้ทันที
+    """
+    user = db.query(models.User).filter(models.User.username == payload.username).first()
+
+    # ไม่บอกตรง ๆ ว่า username นี้มีอยู่จริงไหม (กัน user enumeration) แต่ตอบข้อความเดียวกันเสมอ
+    generic_message = "ถ้ามีบัญชีนี้อยู่ในระบบ จะสามารถใช้ reset token ด้านล่างเพื่อตั้งรหัสผ่านใหม่ได้"
+
+    if not user:
+        return schemas.ForgotPasswordResponse(message=generic_message, reset_token=None)
+
+    token = auth.generate_reset_token()
+    user.reset_token = token
+    user.reset_token_expires = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
+    db.commit()
+
+    return schemas.ForgotPasswordResponse(message=generic_message, reset_token=token)
+
+
+@app.post("/reset-password", response_model=schemas.MessageResponse, tags=["Authentication"])
+def reset_password(payload: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.reset_token == payload.reset_token).first()
+
+    if not user or not user.reset_token_expires or user.reset_token_expires < datetime.datetime.utcnow():
+        raise HTTPException(status_code=400, detail="reset token ไม่ถูกต้องหรือหมดอายุแล้ว กรุณาขอใหม่")
+
+    user.hashed_password = auth.hash_password(payload.new_password)
+    user.reset_token = None
+    user.reset_token_expires = None
+    db.commit()
+
+    return schemas.MessageResponse(message="ตั้งรหัสผ่านใหม่สำเร็จ กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่")
 
 
 # ==================== 2. User Management ====================

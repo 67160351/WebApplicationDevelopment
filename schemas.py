@@ -25,6 +25,20 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=6, max_length=128)
 
 
+class ForgotPasswordRequest(BaseModel):
+    username: str
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_token: Optional[str] = None  # โชว์ตรงนี้เพื่อ demo เท่านั้น ระบบจริงต้องส่งทางอีเมลแทน
+
+
+class ResetPasswordRequest(BaseModel):
+    reset_token: str
+    new_password: str = Field(min_length=6, max_length=128)
+
+
 # ---------- User ----------
 class UserOut(BaseModel):
     id: int

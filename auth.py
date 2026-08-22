@@ -1,4 +1,5 @@
 import os
+import secrets
 import datetime
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -25,6 +26,11 @@ token_blacklist: set[str] = set()
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
+
+
+def generate_reset_token() -> str:
+    """สุ่ม token สำหรับ flow ลืมรหัสผ่าน (ใช้ครั้งเดียว หมดอายุใน 15 นาที)"""
+    return secrets.token_urlsafe(32)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
